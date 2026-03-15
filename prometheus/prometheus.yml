@@ -1,0 +1,35 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Application metrics (OpenTelemetry Prometheus exporter on port 9464)
+  - job_name: "myapp-backend"
+    static_configs:
+      - targets: ["myapp-backend:9464"]
+    scrape_interval: 10s
+
+  # Container metrics via cAdvisor
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    scrape_interval: 10s
+
+  # Node-level metrics (simulates kube node metrics in Docker env)
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]

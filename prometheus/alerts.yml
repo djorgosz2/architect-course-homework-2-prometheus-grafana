@@ -1,0 +1,128 @@
+groups:
+  - name: application_alerts
+    rules:
+      # 1. High HTTP error rate (>5% of requests are 4xx/5xx for 5 minutes)
+      - alert: HighHttpErrorRate
+        expr: |
+          (
+            sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"[45].."}[5m]))
+            /
+            sum(rate(http_server_request_duration_seconds_count[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "More than 5% of HTTP requests are failing (current: {{ $value | humanizePercentage }})."
+
+      # 2. High HTTP latency (p95 > 2 seconds for 5 minutes)
+      - alert: HighHttpLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by(le) (rate(http_server_request_duration_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP latency (p95)"
+          description: "95th percentile latency is above 2 seconds (current: {{ $value | humanizeDuration }})."
+
+      # 3. Application target down
+      - alert: ApplicationDown
+        expr: up{job="myapp-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application is down"
+          description: "The myapp-backend target has been unreachable for more than 1 minute."
+
+      # 4. High business operation error rate
+      - alert: HighOperationErrorRate
+        expr: |
+          (
+            sum(rate(myapp_operations_total{status="error"}[5m]))
+            /
+            sum(rate(myapp_operations_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High business operation error rate"
+          description: "More than 10% of business operations are failing (current: {{ $value | humanizePercentage }})."
+
+      # 5. External API slow response
+      - alert: SlowExternalApiCalls
+        expr: |
+          histogram_quantile(0.95,
+            sum by(le) (rate(myapp_external_api_duration_seconds_bucket[5m]))
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "External API calls are slow"
+          description: "95th percentile external API call duration exceeds 5 seconds."
+
+  - name: infrastructure_alerts
+    rules:
+      # 6. High container memory usage (>80% of limit)
+      - alert: HighContainerMemoryUsage
+        expr: |
+          (
+            container_memory_usage_bytes{name=~".*myapp.*", image!=""}
+            /
+            container_spec_memory_limit_bytes{name=~".*myapp.*", image!=""}
+          ) > 0.8
+          and
+          container_spec_memory_limit_bytes{name=~".*myapp.*", image!=""} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High container memory usage"
+          description: "Container {{ $labels.name }} memory usage is above 80% of its limit."
+
+      # 7. High container CPU usage (>75% sustained)
+      - alert: HighContainerCpuUsage
+        expr: |
+          (
+            sum by(name) (rate(container_cpu_usage_seconds_total{name=~".*myapp.*", image!=""}[5m]))
+            /
+            sum by(name) (container_spec_cpu_quota{name=~".*myapp.*", image!=""} / container_spec_cpu_period{name=~".*myapp.*", image!=""})
+          ) > 0.75
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "High container CPU usage"
+          description: "Container {{ $labels.name }} CPU usage is above 75% of its limit for 30 seconds."
+
+      # 8. Node high disk usage (>85%)
+      - alert: HighDiskUsage
+        expr: |
+          (
+            1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage on node"
+          description: "Disk usage on {{ $labels.instance }} is above 85%."
+
+      # 9. Node high memory usage
+      - alert: HighNodeMemoryUsage
+        expr: |
+          (
+            1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+          ) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High node memory usage"
+          description: "Node memory usage is above 85% (current: {{ $value | humanizePercentage }})."
